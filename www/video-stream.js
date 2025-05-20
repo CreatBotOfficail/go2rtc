@@ -43,7 +43,7 @@ class VideoStream extends VideoRTC {
         </style>
         <div class="info">
             <div class="status"></div>
-            <div class="mode"></div>
+            <div class="mode" style="display:none;"></div>
         </div>
         `;
 

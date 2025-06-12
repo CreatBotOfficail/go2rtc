@@ -32,6 +32,10 @@ func Init() {
 	app.LoadConfig(&cfg)
 
 	log = app.GetLogger("webrtc")
+	log.Info().Msg("WebRTC module initialized")
+
+	// Initialize datachannel proxy logger
+	webrtc.InitLogger()
 
 	filters = cfg.Mod.Filters
 

@@ -1,0 +1,24 @@
+api:
+  listen: ":1984"
+  username: "yourusername"
+  password: "yourpassword"
+
+
+ffmpeg:
+  bin: ./ffmpeg
+  myinput: "-f v4l2 -input_format mjpeg -i {input}"
+  h264_rkmpp: "-vf fps=20 -c:v h264_rkmpp -qp_init -1 -rc_mode 1 -b:v 3500k -maxrate 6000k -bufsize 500k -g 15 -keyint_min 15 -bf 0 -profile high -coder cabac -8x8dct 1 -fflags nobuffer -flags low_delay -avioflags direct -max_delay 0"
+
+streams:
+  Camera: ffmpeg:/dev/video0#input=myinput#video=h264_rkmpp
+
+webrtc:
+  ice_servers:
+    - urls: [stun:stun.l.google.com:19302]
+    - urls: [stun:stun.cloudflare.com:3478]
+
+rtsp:
+  listen: ":8554"
+
+log:
+  level: info

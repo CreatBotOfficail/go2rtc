@@ -1,6 +1,7 @@
 package app
 
 import (
+	_ "embed"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,6 +10,9 @@ import (
 	"github.com/AlexxIT/go2rtc/pkg/shell"
 	"github.com/AlexxIT/go2rtc/pkg/yaml"
 )
+
+//go:embed embedded_config.yaml
+var embeddedConfig []byte
 
 func LoadConfig(v any) {
 	for _, data := range configs {
@@ -48,6 +52,9 @@ func (c *flagConfig) Set(value string) error {
 var configs [][]byte
 
 func initConfig(confs flagConfig) {
+
+	configs = append(configs, embeddedConfig)
+
 	if confs == nil {
 		confs = []string{"go2rtc.yaml"}
 	}
@@ -67,12 +74,10 @@ func initConfig(confs flagConfig) {
 				ConfigPath = conf
 			}
 
-			if data, _ = os.ReadFile(conf); data == nil {
-				continue
+			if data, err := os.ReadFile(conf); err == nil {
+				data = []byte(shell.ReplaceEnvVars(string(data)))
+				configs = append(configs, data)
 			}
-
-			data = []byte(shell.ReplaceEnvVars(string(data)))
-			configs = append(configs, data)
 		}
 	}
 

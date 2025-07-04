@@ -197,13 +197,26 @@ func middlewareLog(next http.Handler) http.Handler {
 
 func middlewareAuth(username, password string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.RemoteAddr, "127.") && !strings.HasPrefix(r.RemoteAddr, "[::1]") && r.RemoteAddr != "@" {
-			user, pass, ok := r.BasicAuth()
-			if !ok || user != username || pass != password {
-				w.Header().Set("Www-Authenticate", `Basic realm="go2rtc"`)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
-			}
+		if strings.HasPrefix(r.RemoteAddr, "127.") || strings.HasPrefix(r.RemoteAddr, "[::1]") || r.RemoteAddr == "@" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if r.URL.Path == "/stream.html" ||
+			r.URL.Path == "/webrtc.html" ||
+			r.URL.Path == "/hls.html" ||
+			r.URL.Path == "/video-stream.js" ||
+			r.URL.Path == "/video-rtc.js" ||
+			strings.HasPrefix(r.URL.Path, "/api/ws") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		user, pass, ok := r.BasicAuth()
+		if !ok || user != username || pass != password {
+			w.Header().Set("Www-Authenticate", `Basic realm="go2rtc"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
 		}
 
 		next.ServeHTTP(w, r)

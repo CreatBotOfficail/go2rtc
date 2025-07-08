@@ -53,7 +53,7 @@ type Message struct {
 type FileMessage struct {
 	ID          string      `json:"id"`
 	Type        string      `json:"type"` // file_start, file_chunk, file_end
-	Index       int         `json:"index,omitempty"`
+	Index       int         `json:"index"`
 	TotalChunks int         `json:"total_chunks,omitempty"`
 	Hash        string      `json:"hash,omitempty"`
 	Data        string      `json:"data,omitempty"` // Base64 encoded data

@@ -93,6 +93,11 @@ var log zerolog.Logger
 
 var PeerConnection func(active bool) (*pion.PeerConnection, error)
 
+// containsDataChannelInOffer checks if the SDP offer contains a data channel
+func containsDataChannelInOffer(sdp string) bool {
+	return strings.Contains(sdp, "m=application") && strings.Contains(sdp, "webrtc-datachannel")
+}
+
 func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 	var stream *streams.Stream
 	var mode core.Mode
@@ -188,8 +193,13 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 		// 2. AddConsumer, so we get new tracks
 		if err = stream.AddConsumer(conn); err != nil {
 			log.Debug().Err(err).Msg("[webrtc] add consumer")
-			_ = conn.Close()
-			return err
+			// If adding consumer fails but offer contains data channel, continue for data channel only
+			if containsDataChannelInOffer(offer.SDP) {
+				log.Debug().Msg("[webrtc] AddConsumer failed but offer contains data channel, continuing for data channel only")
+			} else {
+				_ = conn.Close()
+				return err
+			}
 		}
 	case core.ModePassiveProducer:
 		stream.AddProducer(conn)
@@ -258,8 +268,13 @@ func ExchangeSDP(stream *streams.Stream, offer, desc, userAgent string) (answer 
 		// 2. AddConsumer, so we get new tracks
 		if err = stream.AddConsumer(conn); err != nil {
 			log.Warn().Err(err).Caller().Send()
-			_ = conn.Close()
-			return
+			// If adding consumer fails but offer contains data channel, continue for data channel only
+			if containsDataChannelInOffer(offer) {
+				log.Debug().Msg("[webrtc] AddConsumer failed but offer contains data channel, continuing for data channel only")
+			} else {
+				_ = conn.Close()
+				return
+			}
 		}
 	} else {
 		conn.Mode = core.ModePassiveProducer

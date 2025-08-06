@@ -8,8 +8,8 @@ ffmpeg:
   bin: ./ffmpeg
   myinput: "-f v4l2 -input_format mjpeg -i {input}"
   copy: "-c:v copy -avoid_negative_ts make_zero -fflags nobuffer"
-  h264_rkmpp: "-vf fps=20 -c:v h264_rkmpp -qp_init -1 -rc_mode 1 -b:v 3500k -maxrate 6000k -bufsize 500k -g 15 -keyint_min 15 -bf 0 -profile high -coder cabac -8x8dct 1 -fflags nobuffer -flags low_delay -avioflags direct -max_delay 0"
-  h264_rkmpp_hwscale: "-init_hw_device rkmpp=hw -filter_hw_device hw -vf hwupload,scale_rkrga=w=1280:h=720:format=nv12,fps=20 -c:v h264_rkmpp -qp_init -1 -rc_mode 1 -b:v 2500k -maxrate 4000k -bufsize 400k -g 15 -keyint_min 15 -bf 0 -profile high -coder cabac -8x8dct 1 -fflags nobuffer -flags low_delay -avioflags direct -max_delay 0"
+  h264_rkmpp: "-vf fps=20 -c:v h264_rkmpp -qp_init -1 -rc_mode 1 -b:v 3500k -maxrate 6000k -bufsize 3500k -g 15 -keyint_min 15 -bf 0 -profile baseline -coder cabac -8x8dct 0 -fflags nobuffer -flush_packets 1 -flags low_delay -avioflags direct -max_delay 0"
+  h264_rkmpp_hwscale: "-init_hw_device rkmpp=hw -filter_hw_device hw -vf hwupload,scale_rkrga=w=1280:h=720:format=nv12,fps=20 -c:v h264_rkmpp -qp_init -1 -rc_mode 1 -b:v 2500k -maxrate 4000k -bufsize 2500k -g 15 -keyint_min 15 -bf 0 -profile baseline -coder cabac -8x8dct 0 -fflags nobuffer -flush_packets 1 -flags low_delay -avioflags direct -max_delay 0"
 
 
 streams:
@@ -18,11 +18,11 @@ streams:
 
   # 720p
   Camera:
-    - "ffmpeg:Camera_Raw#video=h264_rkmpp_hwscale"
+    - "ffmpeg:Camera_RAW#video=h264_rkmpp_hwscale"
 
   # 1080p
   Camera_FHD:
-    - "ffmpeg:Camera_Raw#video=h264_rkmpp"
+    - "ffmpeg:Camera_RAW#video=h264_rkmpp"
 
 webrtc:
   listen: ":8555"

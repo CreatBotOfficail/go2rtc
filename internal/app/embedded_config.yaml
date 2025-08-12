@@ -14,7 +14,7 @@ ffmpeg:
 
 streams:
   Camera_RAW:
-    - ffmpeg:/dev/video0#input=myinput#video=copy
+    - ffmpeg:/dev/video_camera#input=myinput#video=copy
 
   # 720p
   Camera:

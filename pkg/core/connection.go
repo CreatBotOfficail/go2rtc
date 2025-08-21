@@ -42,6 +42,7 @@ type Connection struct {
 	URL        string `json:"url,omitempty"`
 	SDP        string `json:"sdp,omitempty"`
 	UserAgent  string `json:"user_agent,omitempty"`
+	UserID     string `json:"X-MQTT-User,omitempty"`
 
 	Medias    []*Media    `json:"medias,omitempty"`
 	Receivers []*Receiver `json:"receivers,omitempty"`
@@ -122,6 +123,7 @@ func (c *Connection) WithRequest(r *http.Request) {
 	}
 
 	c.UserAgent = r.UserAgent()
+	c.UserID = r.Header.Get("X-MQTT-User")
 }
 
 func (c *Connection) GetSource() string {

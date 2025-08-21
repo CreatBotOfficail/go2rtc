@@ -42,7 +42,7 @@ func NewConn(pc *webrtc.PeerConnection) *Conn {
 	})
 
 	pc.OnDataChannel(func(channel *webrtc.DataChannel) {
-		go HandleDataChannelProxy(channel)
+		go HandleDataChannelProxy(channel, c.UserID)
 		c.Fire(channel)
 	})
 

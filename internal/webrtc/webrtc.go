@@ -155,6 +155,7 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 	conn.Mode = mode
 	conn.Protocol = "ws"
 	conn.UserAgent = tr.Request.UserAgent()
+	conn.UserID = tr.Request.Header.Get("X-MQTT-User")
 	conn.Listen(func(msg any) {
 		switch msg := msg.(type) {
 		case pion.PeerConnectionState:
@@ -228,7 +229,7 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 	return nil
 }
 
-func ExchangeSDP(stream *streams.Stream, offer, desc, userAgent string) (answer string, err error) {
+func ExchangeSDP(stream *streams.Stream, offer, desc, userAgent, userID string) (answer string, err error) {
 	pc, err := PeerConnection(false)
 	if err != nil {
 		log.Error().Err(err).Caller().Send()
@@ -239,6 +240,7 @@ func ExchangeSDP(stream *streams.Stream, offer, desc, userAgent string) (answer 
 	conn := webrtc.NewConn(pc)
 	conn.FormatName = desc
 	conn.UserAgent = userAgent
+	conn.UserID = userID
 	conn.Protocol = "http"
 	conn.Listen(func(msg any) {
 		switch msg := msg.(type) {

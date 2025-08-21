@@ -74,25 +74,26 @@ type HTTPProxyManager struct {
 	client        *http.Client
 	fileReceivers map[string]*FileReceiver
 	receiverMutex sync.Mutex
+	userID        string
 }
 
 // HandleDataChannelProxy routes data channels to appropriate proxy handlers based on channel label
-func HandleDataChannelProxy(channel *webrtc.DataChannel) {
+func HandleDataChannelProxy(channel *webrtc.DataChannel, userID string) {
 	name := channel.Label()
 	switch name {
 	case "websocket":
-		log.Info().Str("name", name).Msg("Connected to WebSocket")
-		proxyWebSocketChannel(channel)
+		log.Info().Str("name", name).Str("userID", userID).Msg("Connected to WebSocket")
+		proxyWebSocketChannel(channel, userID)
 	case "http":
-		log.Info().Str("name", name).Msg("Connected to HTTP proxy")
-		proxyHTTPChannelWithChunking(channel)
+		log.Info().Str("name", name).Str("userID", userID).Msg("Connected to HTTP proxy")
+		proxyHTTPChannelWithChunking(channel, userID)
 	default:
-		log.Warn().Str("name", name).Msg("Unknown channel type")
+		log.Warn().Str("name", name).Str("userID", userID).Msg("Unknown channel type")
 	}
 }
 
 // NewHTTPProxyManager creates a new HTTP proxy manager instance
-func NewHTTPProxyManager() *HTTPProxyManager {
+func NewHTTPProxyManager(userID string) *HTTPProxyManager {
 	return &HTTPProxyManager{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -103,6 +104,7 @@ func NewHTTPProxyManager() *HTTPProxyManager {
 			},
 		},
 		fileReceivers: make(map[string]*FileReceiver),
+		userID:        userID,
 	}
 }
 
@@ -115,14 +117,16 @@ type websocketProxy struct {
 	channel      *webrtc.DataChannel
 	wg           sync.WaitGroup
 	shuttingDown bool
+	userID       string
 }
 
-func newWebsocketProxy(channel *webrtc.DataChannel) *websocketProxy {
+func newWebsocketProxy(channel *webrtc.DataChannel, userID string) *websocketProxy {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &websocketProxy{
 		ctx:     ctx,
 		cancel:  cancel,
 		channel: channel,
+		userID:  userID,
 	}
 }
 
@@ -147,7 +151,9 @@ func (p *websocketProxy) ensureConnected() error {
 		default:
 		}
 
-		conn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:7125/websocket", nil)
+		headers := http.Header{}
+		headers.Set("X-MQTT-User", p.userID)
+		conn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:7125/websocket", headers)
 		if err == nil {
 			p.conn = conn
 			log.Info().Msg("WebSocket connected successfully")
@@ -327,7 +333,9 @@ func (p *websocketProxy) reconnect() error {
 		default:
 		}
 
-		conn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:7125/websocket", nil)
+		headers := http.Header{}
+		headers.Set("X-MQTT-User", p.userID)
+		conn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:7125/websocket", headers)
 		if err == nil {
 			p.conn = conn
 			log.Info().Msg("WebSocket reconnected successfully")
@@ -416,8 +424,8 @@ func (p *websocketProxy) shutdown() {
 }
 
 // proxyWebSocketChannel establishes WebSocket proxy for WebRTC data channel
-func proxyWebSocketChannel(channel *webrtc.DataChannel) {
-	p := newWebsocketProxy(channel)
+func proxyWebSocketChannel(channel *webrtc.DataChannel, userID string) {
+	p := newWebsocketProxy(channel, userID)
 	log.Debug().Str("state", channel.ReadyState().String()).Msg("WebRTC data channel state check")
 
 	channel.OnOpen(func() {
@@ -437,8 +445,8 @@ func proxyWebSocketChannel(channel *webrtc.DataChannel) {
 }
 
 // proxyHTTPChannelWithChunking handles HTTP requests with automatic chunking support
-func proxyHTTPChannelWithChunking(channel *webrtc.DataChannel) {
-	manager := NewHTTPProxyManager()
+func proxyHTTPChannelWithChunking(channel *webrtc.DataChannel, userID string) {
+	manager := NewHTTPProxyManager(userID)
 
 	log.Debug().Str("state", channel.ReadyState().String()).Msg("HTTP data channel initialized")
 
@@ -574,6 +582,9 @@ func (hpm *HTTPProxyManager) executeHTTPRequest(msg *Message) ([]byte, int, map[
 	for key, value := range msg.Headers {
 		httpReq.Header.Set(key, value)
 	}
+	
+	// Add UserID to request headers from connection
+	httpReq.Header.Set("X-MQTT-User", hpm.userID)
 
 	// Send HTTP request
 	resp, err := hpm.client.Do(httpReq)
@@ -1188,6 +1199,9 @@ func (hpm *HTTPProxyManager) forwardFileToServer(fileData []byte, filename, cont
 
 	// Set Content-Type to multipart/form-data
 	httpReq.Header.Set("Content-Type", writer.FormDataContentType())
+
+	// Set X-MQTT-User header
+	httpReq.Header.Set("X-MQTT-User", hpm.userID)
 
 	log.Debug().Str("url", uploadURL).Int("size", len(fileData)).Msg("Forwarding file to backend server")
 

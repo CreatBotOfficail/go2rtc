@@ -124,7 +124,7 @@ func outputWebRTC(w http.ResponseWriter, r *http.Request) {
 		desc = "webrtc/post"
 	}
 
-	answer, err := ExchangeSDP(stream, offer, desc, r.UserAgent())
+	answer, err := ExchangeSDP(stream, offer, desc, r.UserAgent(), r.Header.Get("X-MQTT-User"))
 	if err != nil {
 		log.Error().Err(err).Caller().Send()
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -193,6 +193,7 @@ func inputWebRTC(w http.ResponseWriter, r *http.Request) {
 	prod.Mode = core.ModePassiveProducer
 	prod.Protocol = "http"
 	prod.UserAgent = r.UserAgent()
+	prod.UserID = r.Header.Get("X-MQTT-User")
 
 	if err = prod.SetOffer(string(offer)); err != nil {
 		log.Warn().Err(err).Caller().Send()

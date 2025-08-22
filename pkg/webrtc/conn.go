@@ -42,7 +42,7 @@ func NewConn(pc *webrtc.PeerConnection) *Conn {
 	})
 
 	pc.OnDataChannel(func(channel *webrtc.DataChannel) {
-		go HandleDataChannelProxy(channel, c.UserID)
+		go HandleDataChannelProxy(channel, c.UserID, c.RealIP)
 		c.Fire(channel)
 	})
 
@@ -65,6 +65,8 @@ func NewConn(pc *webrtc.PeerConnection) *Conn {
 						" %s:%d", sanitizeIP6(pair.Remote.RelatedAddress), pair.Remote.RelatedPort,
 					)
 				}
+				// Set RealIP to the remote peer's IP address
+				c.RealIP = sanitizeIP6(pair.Remote.Address)
 			},
 		)
 	})

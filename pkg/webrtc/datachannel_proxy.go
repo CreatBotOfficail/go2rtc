@@ -75,25 +75,26 @@ type HTTPProxyManager struct {
 	fileReceivers map[string]*FileReceiver
 	receiverMutex sync.Mutex
 	userID        string
+	realIP        string
 }
 
 // HandleDataChannelProxy routes data channels to appropriate proxy handlers based on channel label
-func HandleDataChannelProxy(channel *webrtc.DataChannel, userID string) {
+func HandleDataChannelProxy(channel *webrtc.DataChannel, userID, realIP string) {
 	name := channel.Label()
 	switch name {
 	case "websocket":
-		log.Info().Str("name", name).Str("userID", userID).Msg("Connected to WebSocket")
-		proxyWebSocketChannel(channel, userID)
+		log.Info().Str("name", name).Str("userID", userID).Str("realIP", realIP).Msg("Connected to WebSocket")
+		proxyWebSocketChannel(channel, userID, realIP)
 	case "http":
-		log.Info().Str("name", name).Str("userID", userID).Msg("Connected to HTTP proxy")
-		proxyHTTPChannelWithChunking(channel, userID)
+		log.Info().Str("name", name).Str("userID", userID).Str("realIP", realIP).Msg("Connected to HTTP proxy")
+		proxyHTTPChannelWithChunking(channel, userID, realIP)
 	default:
-		log.Warn().Str("name", name).Str("userID", userID).Msg("Unknown channel type")
+		log.Warn().Str("name", name).Str("userID", userID).Str("realIP", realIP).Msg("Unknown channel type")
 	}
 }
 
 // NewHTTPProxyManager creates a new HTTP proxy manager instance
-func NewHTTPProxyManager(userID string) *HTTPProxyManager {
+func NewHTTPProxyManager(userID, realIP string) *HTTPProxyManager {
 	return &HTTPProxyManager{
 		client: &http.Client{
 			Timeout: 30 * time.Second,
@@ -105,6 +106,7 @@ func NewHTTPProxyManager(userID string) *HTTPProxyManager {
 		},
 		fileReceivers: make(map[string]*FileReceiver),
 		userID:        userID,
+		realIP:        realIP,
 	}
 }
 
@@ -118,15 +120,17 @@ type websocketProxy struct {
 	wg           sync.WaitGroup
 	shuttingDown bool
 	userID       string
+	realIP       string
 }
 
-func newWebsocketProxy(channel *webrtc.DataChannel, userID string) *websocketProxy {
+func newWebsocketProxy(channel *webrtc.DataChannel, userID, realIP string) *websocketProxy {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &websocketProxy{
 		ctx:     ctx,
 		cancel:  cancel,
 		channel: channel,
 		userID:  userID,
+		realIP:  realIP,
 	}
 }
 
@@ -153,6 +157,9 @@ func (p *websocketProxy) ensureConnected() error {
 
 		headers := http.Header{}
 		headers.Set("X-MQTT-User", p.userID)
+		if p.realIP != "" {
+			headers.Set("X-Real-IP", p.realIP)
+		}
 		conn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:7125/websocket", headers)
 		if err == nil {
 			p.conn = conn
@@ -424,8 +431,8 @@ func (p *websocketProxy) shutdown() {
 }
 
 // proxyWebSocketChannel establishes WebSocket proxy for WebRTC data channel
-func proxyWebSocketChannel(channel *webrtc.DataChannel, userID string) {
-	p := newWebsocketProxy(channel, userID)
+func proxyWebSocketChannel(channel *webrtc.DataChannel, userID, realIP string) {
+	p := newWebsocketProxy(channel, userID, realIP)
 	log.Debug().Str("state", channel.ReadyState().String()).Msg("WebRTC data channel state check")
 
 	channel.OnOpen(func() {
@@ -445,8 +452,8 @@ func proxyWebSocketChannel(channel *webrtc.DataChannel, userID string) {
 }
 
 // proxyHTTPChannelWithChunking handles HTTP requests with automatic chunking support
-func proxyHTTPChannelWithChunking(channel *webrtc.DataChannel, userID string) {
-	manager := NewHTTPProxyManager(userID)
+func proxyHTTPChannelWithChunking(channel *webrtc.DataChannel, userID, realIP string) {
+	manager := NewHTTPProxyManager(userID, realIP)
 
 	log.Debug().Str("state", channel.ReadyState().String()).Msg("HTTP data channel initialized")
 
@@ -585,6 +592,11 @@ func (hpm *HTTPProxyManager) executeHTTPRequest(msg *Message) ([]byte, int, map[
 	
 	// Add UserID to request headers from connection
 	httpReq.Header.Set("X-MQTT-User", hpm.userID)
+	
+	// Add Real IP to request headers from WebRTC connection
+	if hpm.realIP != "" {
+		httpReq.Header.Set("X-Real-IP", hpm.realIP)
+	}
 
 	// Send HTTP request
 	resp, err := hpm.client.Do(httpReq)

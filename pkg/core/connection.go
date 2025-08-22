@@ -43,6 +43,7 @@ type Connection struct {
 	SDP        string `json:"sdp,omitempty"`
 	UserAgent  string `json:"user_agent,omitempty"`
 	UserID     string `json:"X-MQTT-User,omitempty"`
+	RealIP     string `json:"X-Real-IP,omitempty"`
 
 	Medias    []*Media    `json:"medias,omitempty"`
 	Receivers []*Receiver `json:"receivers,omitempty"`

@@ -83,10 +83,8 @@ func HandleDataChannelProxy(channel *webrtc.DataChannel, userID, realIP string) 
 	name := channel.Label()
 	switch name {
 	case "websocket":
-		log.Info().Str("name", name).Str("userID", userID).Str("realIP", realIP).Msg("Connected to WebSocket")
 		proxyWebSocketChannel(channel, userID, realIP)
 	case "http":
-		log.Info().Str("name", name).Str("userID", userID).Str("realIP", realIP).Msg("Connected to HTTP proxy")
 		proxyHTTPChannelWithChunking(channel, userID, realIP)
 	default:
 		log.Warn().Str("name", name).Str("userID", userID).Str("realIP", realIP).Msg("Unknown channel type")
@@ -163,14 +161,14 @@ func (p *websocketProxy) ensureConnected() error {
 		conn, _, err := websocket.DefaultDialer.Dial("ws://127.0.0.1:7125/websocket", headers)
 		if err == nil {
 			p.conn = conn
-			log.Info().Msg("WebSocket connected successfully")
+			log.Info().Str("userID", p.userID).Str("realIP", p.realIP).Msg("WebSocket connected successfully")
 
 			p.wg.Add(1)
 			go p.startReader()
 
 			return nil
 		}
-		log.Warn().Err(err).Int("attempt", attempts+1).Msg("WebSocket connection failed")
+		log.Warn().Str("userID", p.userID).Str("realIP", p.realIP).Err(err).Int("attempt", attempts+1).Msg("WebSocket connection failed")
 		time.Sleep(time.Duration(attempts+1) * time.Second)
 	}
 	return fmt.Errorf("websocket connect failed after %d retries", maxRetries)
@@ -424,7 +422,7 @@ func (p *websocketProxy) shutdown() {
 	if p.conn != nil {
 		p.conn.Close()
 		p.conn = nil
-		log.Info().Msg("WebSocket connection closed due to WebRTC channel closure")
+		log.Info().Str("userID", p.userID).Str("realIP", p.realIP).Msg("WebSocket connection closed due to WebRTC channel closure")
 	}
 
 	p.cancel()
@@ -436,11 +434,11 @@ func proxyWebSocketChannel(channel *webrtc.DataChannel, userID, realIP string) {
 	log.Debug().Str("state", channel.ReadyState().String()).Msg("WebRTC data channel state check")
 
 	channel.OnOpen(func() {
-		log.Info().Str("state", channel.ReadyState().String()).Msg("WebRTC data channel opened")
+		log.Info().Str("state", channel.ReadyState().String()).Str("userID", userID).Str("realIP", realIP).Msg("WebRTC data channel opened")
 	})
 
 	channel.OnClose(func() {
-		log.Info().Str("state", channel.ReadyState().String()).Msg("WebRTC data channel closed")
+		log.Info().Str("state", channel.ReadyState().String()).Str("userID", userID).Str("realIP", realIP).Msg("WebRTC data channel closed")
 		p.shutdown()
 		p.wg.Wait()
 	})
@@ -458,11 +456,11 @@ func proxyHTTPChannelWithChunking(channel *webrtc.DataChannel, userID, realIP st
 	log.Debug().Str("state", channel.ReadyState().String()).Msg("HTTP data channel initialized")
 
 	channel.OnOpen(func() {
-		log.Info().Str("state", channel.ReadyState().String()).Msg("HTTP data channel opened")
+		log.Info().Str("state", channel.ReadyState().String()).Str("userID", userID).Str("realIP", realIP).Msg("HTTP data channel opened")
 	})
 
 	channel.OnClose(func() {
-		log.Info().Str("state", channel.ReadyState().String()).Msg("HTTP data channel closed")
+		log.Info().Str("state", channel.ReadyState().String()).Str("userID", userID).Str("realIP", realIP).Msg("HTTP data channel closed")
 	})
 
 	channel.SetBufferedAmountLowThreshold(BufferThreshold)

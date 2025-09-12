@@ -153,6 +153,12 @@ func (p *websocketProxy) ensureConnected() error {
 		default:
 		}
 
+		// Check if WebRTC data channel is still open before each retry
+		if p.channel.ReadyState() != webrtc.DataChannelStateOpen {
+			log.Debug().Str("channel_state", p.channel.ReadyState().String()).Int("attempt", attempts+1).Msg("WebSocket data channel closed during connection attempt")
+			return fmt.Errorf("data channel closed during connection attempt")
+		}
+
 		headers := http.Header{}
 		headers.Set("X-MQTT-User", p.userID)
 		if p.realIP != "" {
@@ -290,7 +296,6 @@ func (p *websocketProxy) startReader() {
 				return
 			}
 
-			conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 			_, data, err := conn.ReadMessage()
 			if err != nil {
 				if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
@@ -299,11 +304,13 @@ func (p *websocketProxy) startReader() {
 					log.Debug().Err(err).Msg("WebSocket read error")
 				}
 
-				if !p.isShuttingDown() {
+				if !p.isShuttingDown() && p.channel.ReadyState() == webrtc.DataChannelStateOpen {
 					log.Debug().Msg("Attempting WebSocket reconnection")
 					if err := p.reconnect(); err != nil {
 						log.Error().Err(err).Msg("WebSocket reconnection failed")
 					}
+				} else {
+					log.Debug().Str("channel_state", p.channel.ReadyState().String()).Msg("WebSocket data channel not open, skipping reconnection")
 				}
 				return
 			}
@@ -325,6 +332,17 @@ func (p *websocketProxy) reconnect() error {
 		return fmt.Errorf("proxy is shutting down")
 	}
 
+	// Check if WebRTC data channel is closed, if so, stop reconnecting
+	if p.channel.ReadyState() != webrtc.DataChannelStateOpen {
+		log.Info().Str("channel_state", p.channel.ReadyState().String()).Str("userID", p.userID).Str("realIP", p.realIP).Msg("WebSocket data channel closed, stopping WebSocket reconnection")
+		p.shuttingDown = true
+		if p.conn != nil {
+			p.conn.Close()
+			p.conn = nil
+		}
+		return fmt.Errorf("data channel closed, stopping reconnection")
+	}
+
 	if p.conn != nil {
 		p.conn.Close()
 		p.conn = nil
@@ -336,6 +354,13 @@ func (p *websocketProxy) reconnect() error {
 		case <-p.ctx.Done():
 			return fmt.Errorf("context canceled")
 		default:
+		}
+
+		// Check if WebRTC data channel is still open before each reconnect attempt
+		if p.channel.ReadyState() != webrtc.DataChannelStateOpen {
+			log.Info().Str("channel_state", p.channel.ReadyState().String()).Int("attempt", attempts+1).Str("userID", p.userID).Str("realIP", p.realIP).Msg("WebSocket data channel closed during reconnection attempt")
+			p.shuttingDown = true
+			return fmt.Errorf("data channel closed during reconnection")
 		}
 
 		headers := http.Header{}
@@ -394,13 +419,15 @@ func (p *websocketProxy) forwardMessage(msg webrtc.DataChannelMessage) {
 	if err := conn.WriteMessage(messageType, msg.Data); err != nil {
 		log.Error().Err(err).Msg("WebSocket write failed")
 
-		if !p.isShuttingDown() {
+		if !p.isShuttingDown() && p.channel.ReadyState() == webrtc.DataChannelStateOpen {
 			log.Debug().Msg("Attempting WebSocket reconnection after write error")
 			go func() {
 				if err := p.reconnect(); err != nil {
 					log.Error().Err(err).Msg("Reconnection after write error failed")
 				}
 			}()
+		} else {
+			log.Debug().Str("channel_state", p.channel.ReadyState().String()).Msg("WebSocket data channel not open, skipping reconnection after write error")
 		}
 	}
 }

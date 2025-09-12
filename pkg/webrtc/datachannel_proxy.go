@@ -31,6 +31,8 @@ const (
 	BufferThreshold      = 2048 * 1024 // Buffer threshold (2MB)
 )
 
+const Version = "1.0.0"
+
 var log zerolog.Logger
 
 // InitLogger initializes the logger for this package
@@ -168,6 +170,10 @@ func (p *websocketProxy) ensureConnected() error {
 		if err == nil {
 			p.conn = conn
 			log.Info().Str("userID", p.userID).Str("realIP", p.realIP).Msg("WebSocket connected successfully")
+
+			if err := p.sendIdentificationMessage(conn); err != nil {
+				log.Error().Err(err).Msg("Failed to send identification message")
+			}
 
 			p.wg.Add(1)
 			go p.startReader()
@@ -370,6 +376,10 @@ func (p *websocketProxy) reconnect() error {
 			p.conn = conn
 			log.Info().Msg("WebSocket reconnected successfully")
 
+			if err := p.sendIdentificationMessage(conn); err != nil {
+				log.Error().Err(err).Msg("Failed to send identification message on reconnect")
+			}
+
 			p.wg.Add(1)
 			go p.startReader()
 
@@ -437,6 +447,41 @@ func (p *websocketProxy) isShuttingDown() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.shuttingDown
+}
+
+// sendIdentificationMessage sends identification message to WebSocket server
+func (p *websocketProxy) sendIdentificationMessage(conn *websocket.Conn) error {
+	identMsg := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"method":  "server.connection.identify",
+		"params": map[string]interface{}{
+			"client_name": "go2rtc",
+			"version":     Version,
+			"type":        "mobile",
+			"url":         "https://github.com/CreatBotOfficail/go2rtc.git",
+		},
+		"id": 4656,
+	}
+
+	msgBytes, err := json.Marshal(identMsg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal identification message: %v", err)
+	}
+
+	if conn == nil {
+		return fmt.Errorf("no connection available")
+	}
+
+	if err := conn.SetWriteDeadline(time.Now().Add(5 * time.Second)); err != nil {
+		return fmt.Errorf("failed to set write deadline: %v", err)
+	}
+
+	if err := conn.WriteMessage(websocket.TextMessage, msgBytes); err != nil {
+		return fmt.Errorf("failed to send identification message: %v", err)
+	}
+
+	log.Debug().Str("userID", p.userID).Str("realIP", p.realIP).Msg("Identification message sent successfully")
+	return nil
 }
 
 // shutdown safely closes WebSocket connection and cancels context

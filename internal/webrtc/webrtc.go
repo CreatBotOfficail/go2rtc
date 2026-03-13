@@ -155,7 +155,10 @@ func asyncHandler(tr *ws.Transport, msg *ws.Message) (err error) {
 	conn.Mode = mode
 	conn.Protocol = "ws"
 	conn.UserAgent = tr.Request.UserAgent()
-	conn.UserID = tr.Request.Header.Get("X-MQTT-User")
+
+	if msg.XMQTTUser != "" {
+		conn.UserID = msg.XMQTTUser
+	}
 	conn.Listen(func(msg any) {
 		switch msg := msg.(type) {
 		case pion.PeerConnectionState:

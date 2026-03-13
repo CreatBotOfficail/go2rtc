@@ -35,8 +35,9 @@ var log zerolog.Logger
 
 // Message - struct for data exchange in Web API
 type Message struct {
-	Type  string `json:"type"`
-	Value any    `json:"value,omitempty"`
+	Type      string `json:"type"`
+	Value     any    `json:"value,omitempty"`
+	XMQTTUser string `json:"X-MQTT-User,omitempty"`
 }
 
 func (m *Message) String() (value string) {

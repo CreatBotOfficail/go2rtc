@@ -1,5 +1,8 @@
 .idea/
 .tmp/
+.agents/
+.codegraph/
+skills-lock.json
 
 internal/app/embedded_config.yaml
 

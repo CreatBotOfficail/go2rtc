@@ -13,6 +13,7 @@ import (
 	"github.com/AlexxIT/go2rtc/internal/expr"
 	"github.com/AlexxIT/go2rtc/internal/ffmpeg"
 	"github.com/AlexxIT/go2rtc/internal/gopro"
+	"github.com/AlexxIT/go2rtc/internal/gstreamer"
 	"github.com/AlexxIT/go2rtc/internal/hass"
 	"github.com/AlexxIT/go2rtc/internal/hls"
 	"github.com/AlexxIT/go2rtc/internal/homekit"
@@ -88,6 +89,7 @@ func main() {
 	gopro.Init()    // gopro source
 	doorbird.Init() // doorbird source
 	v4l2.Init()     // v4l2 source
+	gstreamer.Init() // gstreamer source
 
 	// 6. Helper modules
 

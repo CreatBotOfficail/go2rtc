@@ -24,6 +24,18 @@ streams:
   Camera_FHD:
     - "ffmpeg:Camera_RAW#video=h264_rkmpp"
 
+  Camera_Test_Raw:
+    - gstreamer:device?video=/dev/video_camera#caps=image/jpeg,width=1280,height=720#share=Camera_Raw#postProcess=jpegdec
+    - gstreamer:device?video=/dev/video_camera#caps=image/jpeg,width=1280,height=720#share=Camera_Raw
+
+  Camera_Test:
+    - gstreamer:streams?name=Camera_Raw#caps=image/jpeg,width=1280,height=720#process=jpegdec ! h264enc
+    - gstreamer:streams?name=Camera_Raw#caps=image/jpeg,width=1280,height=720#process=jpegdec
+
+  Camera_Test2:
+    - gstreamer:streams?name=Camera_Test#process=h264enc
+    - gstreamer:streams?name=Camera_Test
+
 webrtc:
   listen: ":8555"
   ice_servers:

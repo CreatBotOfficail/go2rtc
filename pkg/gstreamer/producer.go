@@ -12,6 +12,14 @@ import (
 	"github.com/AlexxIT/go2rtc/pkg/core"
 )
 
+// ConnectionAccessor is a wrapped core.Producer that exposes its embedded
+// *core.Connection. All magic.Open producers satisfy this through method
+// promotion; producers that don't (e.g. nil, future types) fail MarshalJSON.
+type ConnectionAccessor interface {
+	core.Producer
+	GetConnection() *core.Connection
+}
+
 // Producer wraps a core.Producer (from magic.Open) and owns the unix socket
 // + pipe lifetime the gstreamer service writes to.
 type Producer struct {
@@ -23,18 +31,25 @@ type Producer struct {
 	closed bool
 }
 
-// MarshalJSON delegates to the wrapped producer and nests shareSocket
-// under "pipelines".
+// MarshalJSON flattens the embedded *core.Connection fields of the wrapped
+// producer and appends shareSocket under "shareSocket".
 func (p *Producer) MarshalJSON() ([]byte, error) {
-	wrappedJSON, _ := json.Marshal(p.wrapped)
-	if p.shareSocket == nil {
-		return wrappedJSON, nil
+	var conn *core.Connection
+
+	if c, ok := p.wrapped.(ConnectionAccessor); ok {
+		conn = c.GetConnection()
+	} else {
+		return nil, errors.New("gstreamer: wrapped producer does not expose *core.Connection")
 	}
 
-	out := make(map[string]any)
-	_ = json.Unmarshal(wrappedJSON, &out)
-	out["pipelines"] = p.shareSocket
-	return json.Marshal(out)
+	info := &struct {
+		*core.Connection
+		*ShareSocket `json:"shareSocket"`
+	}{
+		Connection:  conn,
+		ShareSocket: p.shareSocket,
+	}
+	return json.Marshal(info)
 }
 
 // Start is a passthrough. If the gstreamer service disappears, the pipe

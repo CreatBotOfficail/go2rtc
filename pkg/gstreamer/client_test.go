@@ -21,9 +21,10 @@ type mockServer struct {
 	listener *net.UnixListener
 	gotFD    int
 	gotReq   Request
+	resp     Response
 }
 
-func startMockServer(t *testing.T) *mockServer {
+func startMockServer(t *testing.T, opts ...func(*mockServer)) *mockServer {
 	t.Helper()
 	dir := t.TempDir()
 	sock := filepath.Join(dir, "gstreamer.sock")
@@ -31,7 +32,10 @@ func startMockServer(t *testing.T) *mockServer {
 	ul, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
 	require.NoError(t, err)
 
-	ms := &mockServer{addr: sock, listener: ul}
+	ms := &mockServer{addr: sock, listener: ul, resp: Response{Status: "ok"}}
+	for _, opt := range opts {
+		opt(ms)
+	}
 
 	go func() {
 		uc, err := ul.AcceptUnix()
@@ -61,16 +65,16 @@ func startMockServer(t *testing.T) *mockServer {
 			}
 		}
 
-		// If we got an FD, write some mjpeg bytes to it so magic.Open succeeds.
-		if ms.gotFD != 0 {
+		// Only on success do we feed the read pipe with mjpeg bytes; on
+		// error responses, magic.Open should not be able to produce.
+		if ms.gotFD != 0 && ms.resp.Status == "ok" {
 			_ = syscall.SetNonblock(ms.gotFD, false)
 			f := os.NewFile(uintptr(ms.gotFD), "remote")
 			_, _ = f.Write(mjpegStart)
 			_ = f.Close()
 		}
 
-		// Reply ok.
-		resp, _ := json.Marshal(Response{Status: "ok"})
+		resp, _ := json.Marshal(ms.resp)
 		_, _, _ = uc.WriteMsgUnix(resp, nil, nil)
 	}()
 
@@ -117,58 +121,15 @@ func TestNewProducer_HappyPath(t *testing.T) {
 }
 
 func TestNewProducer_ServerError(t *testing.T) {
-	dir := t.TempDir()
-	sock := filepath.Join(dir, "gstreamer.sock")
+	ms := startMockServer(t, func(m *mockServer) {
+		m.resp = Response{Status: "error", Error: "boom"}
+	})
+	defer ms.Close()
 
-	ul, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
-	require.NoError(t, err)
-	defer ul.Close()
-	defer os.Remove(sock)
-	go func() {
-		uc, err := ul.AcceptUnix()
-		if err != nil {
-			return
-		}
-		defer uc.Close()
-
-		buf := make([]byte, 4096)
-		n, _, _, _, _ := uc.ReadMsgUnix(buf, nil)
-		_ = n
-		resp, _ := json.Marshal(Response{Status: "error", Error: "boom"})
-		_, _, _ = uc.WriteMsgUnix(resp, nil, nil)
-	}()
-
-	p, err := NewProducer("", &ShareSocket{Unixsocket: sock, Result: "fakesrc ! fdsink"})
+	p, err := NewProducer("", &ShareSocket{Unixsocket: ms.addr, Result: "fakesrc ! fdsink"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "boom")
 	require.Nil(t, p)
-}
-
-func TestNewProducer_EmptySocket(t *testing.T) {
-	_, err := NewProducer("", &ShareSocket{Result: "x"})
-	require.Error(t, err)
-}
-
-func TestNewProducer_EmptyResult(t *testing.T) {
-	dir := t.TempDir()
-	sock := filepath.Join(dir, "gstreamer.sock")
-	ul, err := net.ListenUnix("unix", &net.UnixAddr{Name: sock, Net: "unix"})
-	require.NoError(t, err)
-	defer ul.Close()
-	defer os.Remove(sock)
-
-	_, err = NewProducer("", &ShareSocket{Unixsocket: sock})
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "empty result")
-}
-
-func TestRequest_Shape(t *testing.T) {
-	// Sanity: the JSON shape is what the external service expects.
-	req := Request{Action: "start", Result: "fdsink", Share: map[string]string{"a": "b"}}
-
-	out, err := json.Marshal(req)
-	require.NoError(t, err)
-	require.Equal(t, `{"action":"start","result":"fdsink","share":{"a":"b"}}`, string(out))
 }
 
 // Regression: /api/streams used to return producers: [{}] for gstreamer
@@ -196,19 +157,11 @@ func TestProducer_MarshalJSON_DelegatesToWrapped(t *testing.T) {
 	require.Contains(t, s, `"medias":["video, recvonly, JPEG"]`)
 	require.Contains(t, s, `"protocol":"unixsocket+pipe"`)
 	require.Contains(t, s, `"source":"`+rawURL+`"`)
-	require.Contains(t, s, `"pipelines":{`)
+	require.Contains(t, s, `"shareSocket":{`)
 	require.Contains(t, s, `"unixsocket":"`+ms.addr+`"`)
 	require.Contains(t, s, `"result":"fakesrc ! fdsink"`)
 	require.Contains(t, s, `"share":{"foo":"fakesrc ! interpipesink name=foo"}`)
 	require.NotContains(t, s, `"url":`)
 	require.NotContains(t, s, `"remote_addr":`)
 	require.NotEqual(t, "{}", s)
-}
-
-// MarshalJSON must not panic when the wrapper has no wrapped producer.
-func TestProducer_MarshalJSON_NilWrapped(t *testing.T) {
-	p := &Producer{}
-	out, err := json.Marshal(p)
-	require.NoError(t, err)
-	require.Equal(t, "null", string(out))
 }

@@ -22,8 +22,8 @@ const (
 
 // NewProducer dials the gstreamer service, sends the request with the pipe
 // write end via SCM_RIGHTS, and returns a Producer reading the stream through
-// pkg/magic. rawURL goes to the wrapped Source field; shareSocket is also
-// rendered under "pipelines" in the JSON output.
+// pkg/magic. rawURL is set as the wrapped Source; shareSocket is rendered
+// under "shareSocket" in the JSON output.
 func NewProducer(rawURL string, shareSocket *ShareSocket) (*Producer, error) {
 	if shareSocket == nil || shareSocket.Unixsocket == "" {
 		return nil, errors.New("gstreamer: empty socket address")
@@ -47,6 +47,7 @@ func NewProducer(rawURL string, shareSocket *ShareSocket) (*Producer, error) {
 	_ = w.Close() // FD now owned by the service via SCM_RIGHTS
 	if err != nil {
 		_ = r.Close()
+		_ = w.Close()
 		return nil, err
 	}
 

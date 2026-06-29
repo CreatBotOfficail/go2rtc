@@ -54,6 +54,10 @@ type Connection struct {
 	Transport any `json:"-"`
 }
 
+func (c *Connection) GetConnection() *Connection {
+	return c
+}
+
 func (c *Connection) GetMedias() []*Media {
 	return c.Medias
 }

@@ -24,9 +24,7 @@ func Init() {
 
 	log = app.GetLogger("gstreamer")
 
-	// defaults["socket"] must be non-empty after Init; tests skip Init
-	// and rely on applySocketDefaults' fallback, but production callers
-	// should be able to read defaults["socket"] directly.
+	// ensure defaults["socket"] is non-empty for production callers
 	if defaults["socket"] == "" {
 		defaults["socket"] = defaultSocketPath()
 	}
@@ -57,7 +55,7 @@ func gstreamerHandle(rawURL string) (core.Producer, error) {
 	args := parseArgs(rawURL[len("gstreamer:"):])
 
 	sa := args.socketArgs()
-	if sa.unixsocket == "" {
+	if sa.Unixsocket == "" {
 		return nil, errors.New("gstreamer: exec mode should have been redirected")
 	}
 
@@ -69,14 +67,12 @@ func gstreamerHandle(rawURL string) (core.Producer, error) {
 	}
 
 	log.Debug().
-		Str("socket", sa.unixsocket).
-		Str("result", sa.result).
-		Int("share", len(sa.share)).
+		Str("socket", sa.Unixsocket).
+		Str("result", sa.Result).
+		Int("share", len(sa.Share)).
 		Msg("[gstreamer] handle socket mode")
 
-	return gstreamer.NewProducer(sa.unixsocket, gstreamer.Request{
-		Action: "start",
-		Result: sa.result,
-		Share:  sa.share,
-	})
+	// sa carries the unix socket + pipelines the wrapper needs to
+	// dial the service and render the JSON output.
+	return gstreamer.NewProducer(rawURL, &sa)
 }

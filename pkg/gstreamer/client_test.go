@@ -70,7 +70,7 @@ func startMockServer(t *testing.T) *mockServer {
 		}
 
 		// Reply ok.
-		resp, _ := json.Marshal(response{Status: "ok"})
+		resp, _ := json.Marshal(Response{Status: "ok"})
 		_, _, _ = uc.WriteMsgUnix(resp, nil, nil)
 	}()
 
@@ -86,11 +86,13 @@ func TestNewProducer_HappyPath(t *testing.T) {
 	ms := startMockServer(t)
 	defer ms.Close()
 
-	p, err := NewProducer(ms.addr, Request{
-		Action: "start",
-		Result: "fakesrc ! fdsink",
-		Share:  map[string]string{"foo": "fakesrc ! interpipesink name=foo"},
-	})
+	rawURL := "gstreamer:device?video=/dev/video0#socket"
+	shareSocket := &ShareSocket{
+		Unixsocket: ms.addr,
+		Result:     "fakesrc ! fdsink",
+		Share:      map[string]string{"foo": "fakesrc ! interpipesink name=foo"},
+	}
+	p, err := NewProducer(rawURL, shareSocket)
 	require.NoError(t, err)
 	require.NotNil(t, p)
 
@@ -132,18 +134,18 @@ func TestNewProducer_ServerError(t *testing.T) {
 		buf := make([]byte, 4096)
 		n, _, _, _, _ := uc.ReadMsgUnix(buf, nil)
 		_ = n
-		resp, _ := json.Marshal(response{Status: "error", Error: "boom"})
+		resp, _ := json.Marshal(Response{Status: "error", Error: "boom"})
 		_, _, _ = uc.WriteMsgUnix(resp, nil, nil)
 	}()
 
-	p, err := NewProducer(sock, Request{Action: "start", Result: "fakesrc ! fdsink"})
+	p, err := NewProducer("", &ShareSocket{Unixsocket: sock, Result: "fakesrc ! fdsink"})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "boom")
 	require.Nil(t, p)
 }
 
 func TestNewProducer_EmptySocket(t *testing.T) {
-	_, err := NewProducer("", Request{Action: "start", Result: "x"})
+	_, err := NewProducer("", &ShareSocket{Result: "x"})
 	require.Error(t, err)
 }
 
@@ -155,7 +157,7 @@ func TestNewProducer_EmptyResult(t *testing.T) {
 	defer ul.Close()
 	defer os.Remove(sock)
 
-	_, err = NewProducer(sock, Request{Action: "start"})
+	_, err = NewProducer("", &ShareSocket{Unixsocket: sock})
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "empty result")
 }
@@ -167,4 +169,46 @@ func TestRequest_Shape(t *testing.T) {
 	out, err := json.Marshal(req)
 	require.NoError(t, err)
 	require.Equal(t, `{"action":"start","result":"fdsink","share":{"a":"b"}}`, string(out))
+}
+
+// Regression: /api/streams used to return producers: [{}] for gstreamer
+// sources because the wrapper had no MarshalJSON. MarshalJSON must
+// delegate to the wrapped producer so medias/format/etc. are visible.
+func TestProducer_MarshalJSON_DelegatesToWrapped(t *testing.T) {
+	ms := startMockServer(t)
+	defer ms.Close()
+
+	rawURL := "gstreamer:device?video=/dev/video0#socket"
+	shareSocket := &ShareSocket{
+		Unixsocket: ms.addr,
+		Result:     "fakesrc ! fdsink",
+		Share:      map[string]string{"foo": "fakesrc ! interpipesink name=foo"},
+	}
+	p, err := NewProducer(rawURL, shareSocket)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+	defer p.Stop()
+
+	out, err := json.Marshal(p)
+	require.NoError(t, err)
+	s := string(out)
+	require.Contains(t, s, `"format_name":"mjpeg"`)
+	require.Contains(t, s, `"medias":["video, recvonly, JPEG"]`)
+	require.Contains(t, s, `"protocol":"unixsocket+pipe"`)
+	require.Contains(t, s, `"source":"`+rawURL+`"`)
+	require.Contains(t, s, `"pipelines":{`)
+	require.Contains(t, s, `"unixsocket":"`+ms.addr+`"`)
+	require.Contains(t, s, `"result":"fakesrc ! fdsink"`)
+	require.Contains(t, s, `"share":{"foo":"fakesrc ! interpipesink name=foo"}`)
+	require.NotContains(t, s, `"url":`)
+	require.NotContains(t, s, `"remote_addr":`)
+	require.NotEqual(t, "{}", s)
+}
+
+// MarshalJSON must not panic when the wrapper has no wrapped producer.
+func TestProducer_MarshalJSON_NilWrapped(t *testing.T) {
+	p := &Producer{}
+	out, err := json.Marshal(p)
+	require.NoError(t, err)
+	require.Equal(t, "null", string(out))
 }

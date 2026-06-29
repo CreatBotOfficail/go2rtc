@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/AlexxIT/go2rtc/internal/streams"
+	"github.com/AlexxIT/go2rtc/pkg/gstreamer"
 )
 
 // Default unix socket address when env/yaml don't specify one. Linux uses
@@ -60,8 +61,8 @@ type Args struct {
 	ShareAttrs  string // extra attributes for interpipesrc elements
 	BinArgs     string // extra gst-launch command-line flags
 
-	needSocket   bool         // set by streams? body or #share / #socket in query
-	cachedSocket *shareSocket // memoised socketArgs() result
+	needSocket   bool                   // set by streams? body or #share / #socket in query
+	cachedSocket *gstreamer.ShareSocket // memoised socketArgs() result
 }
 
 // defaults: bare keys are field names; namespaced ("output/rtsp") are
@@ -206,50 +207,43 @@ func applySocketDefaults(a *Args, query url.Values) {
 	}
 }
 
-// shareSocket is the bundle sent to the external gstreamer service.
-type shareSocket struct {
-	unixsocket string
-	result     string
-	share      map[string]string
-}
-
 // socketArgs returns the topology the external service must run. Result is
 // memoised on a.cachedSocket. Returns the zero value when a.Socket is empty.
-func (a *Args) socketArgs() shareSocket {
+func (a *Args) socketArgs() gstreamer.ShareSocket {
 	if a.cachedSocket != nil {
 		return *a.cachedSocket
 	}
 	if a.Socket == "" {
-		a.cachedSocket = &shareSocket{}
+		a.cachedSocket = &gstreamer.ShareSocket{}
 		return *a.cachedSocket
 	}
-	res := shareSocket{
-		unixsocket: a.Socket,
-		share:      map[string]string{},
+	res := gstreamer.ShareSocket{
+		Unixsocket: a.Socket,
+		Share:      map[string]string{},
 	}
 
 	shareName := ""
 	if sourceArgs, ok := findStreamSource(a.Input); ok {
 		shareName = sourceArgs.Share
 		// clone: writes below must not alias the upstream map
-		res.share = maps.Clone(sourceArgs.socketArgs().share)
+		res.Share = maps.Clone(sourceArgs.socketArgs().Share)
 	}
 
 	if a.Share != "" {
 		sinkOutput := "interpipesink name=" + a.Share
 		switch {
 		case shareName != "" && shareName != a.Share:
-			res.share[a.Share] = a.interpipeChain(shareName, true, false, sinkOutput)
+			res.Share[a.Share] = a.interpipeChain(shareName, true, false, sinkOutput)
 		case shareName == "":
-			res.share[a.Share] = a.pipeline(false) + " ! " + sinkOutput
+			res.Share[a.Share] = a.pipeline(false) + " ! " + sinkOutput
 		default:
 			// shareName == a.Share: upstream already publishes this name
 		}
-		res.result = a.interpipeChain(a.Share, false, true, a.Output)
+		res.Result = a.interpipeChain(a.Share, false, true, a.Output)
 	} else if shareName != "" {
-		res.result = a.interpipeChain(shareName, true, false, a.Output)
+		res.Result = a.interpipeChain(shareName, true, false, a.Output)
 	} else {
-		res.result = a.pipeline(true)
+		res.Result = a.pipeline(true)
 	}
 	a.cachedSocket = &res
 	return res

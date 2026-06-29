@@ -11,41 +11,31 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/AlexxIT/go2rtc/pkg/core"
 	"github.com/AlexxIT/go2rtc/pkg/magic"
 )
-
-// Request is the JSON payload sent to the external gstreamer service. Share
-// pipelines run as their own gst-launch processes; Result runs as one process
-// whose fdsink is bound to the FD passed alongside this request. The service
-// replies with {"status":"ok"} on success.
-type Request struct {
-	Action string            `json:"action"`
-	Result string            `json:"result"`
-	Share  map[string]string `json:"share,omitempty"`
-}
-
-type response struct {
-	Status string `json:"status"`
-	Error  string `json:"error,omitempty"`
-}
 
 const (
 	handshakeDeadline = 5 * time.Second
 	defaultReadBuf    = 1024
 )
 
-// NewProducer dials the gstreamer service at socket, sends req with the
-// write end of a local pipe (SCM_RIGHTS), and returns a Producer that
-// reads the stream through pkg/magic.
-func NewProducer(socket string, req Request) (*Producer, error) {
-	if socket == "" {
+// NewProducer dials the gstreamer service, sends the request with the pipe
+// write end via SCM_RIGHTS, and returns a Producer reading the stream through
+// pkg/magic. rawURL goes to the wrapped Source field; shareSocket is also
+// rendered under "pipelines" in the JSON output.
+func NewProducer(rawURL string, shareSocket *ShareSocket) (*Producer, error) {
+	if shareSocket == nil || shareSocket.Unixsocket == "" {
 		return nil, errors.New("gstreamer: empty socket address")
 	}
-	if req.Action == "" {
-		req.Action = "start"
-	}
-	if req.Result == "" {
+	if shareSocket.Result == "" {
 		return nil, errors.New("gstreamer: empty result pipeline")
+	}
+
+	req := Request{
+		Action: "start",
+		Result: shareSocket.Result,
+		Share:  shareSocket.Share,
 	}
 
 	r, w, err := os.Pipe()
@@ -53,7 +43,7 @@ func NewProducer(socket string, req Request) (*Producer, error) {
 		return nil, err
 	}
 
-	conn, err := dial(socket, &req, w)
+	conn, err := dial(shareSocket.Unixsocket, &req, w)
 	_ = w.Close() // FD now owned by the service via SCM_RIGHTS
 	if err != nil {
 		_ = r.Close()
@@ -67,26 +57,37 @@ func NewProducer(socket string, req Request) (*Producer, error) {
 		return nil, fmt.Errorf("gstreamer: %w", err)
 	}
 
-	return &Producer{wrapped: prod, conn: conn, readPipe: r}, nil
+	// magic.Open producers embed core.Connection.
+	if info, ok := prod.(core.Info); ok {
+		info.SetSource(rawURL)
+		info.SetProtocol("unixsocket+pipe")
+	}
+
+	return &Producer{
+		wrapped:     prod,
+		conn:        conn,
+		readPipe:    r,
+		shareSocket: shareSocket,
+	}, nil
 }
 
 func dial(socket string, req *Request, fd *os.File) (*net.UnixConn, error) {
 	addr := &net.UnixAddr{Name: socket, Net: "unix"}
 	conn, err := net.DialUnix("unix", nil, addr)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("gstreamer: dial: %w", err)
 	}
 
 	data, err := json.Marshal(req)
 	if err != nil {
 		_ = conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("gstreamer: marshal request: %w", err)
 	}
 
 	oob := syscall.UnixRights(int(fd.Fd()))
 	if _, _, err = conn.WriteMsgUnix(data, oob, nil); err != nil {
 		_ = conn.Close()
-		return nil, err
+		return nil, fmt.Errorf("gstreamer: send request: %w", err)
 	}
 
 	if err := conn.SetReadDeadline(time.Now().Add(handshakeDeadline)); err != nil {
@@ -101,7 +102,7 @@ func dial(socket string, req *Request, fd *os.File) (*net.UnixConn, error) {
 		return nil, fmt.Errorf("gstreamer: handshake: %w", err)
 	}
 
-	var resp response
+	var resp Response
 	if err := json.Unmarshal(buf[:n], &resp); err != nil {
 		_ = conn.Close()
 		return nil, fmt.Errorf("gstreamer: handshake decode: %w", err)

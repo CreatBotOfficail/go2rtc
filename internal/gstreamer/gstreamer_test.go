@@ -101,9 +101,9 @@ func TestParseArgs_Defaults(t *testing.T) {
 			require.Equal(t, test.cmd, args.String())
 
 			socketArgs := args.socketArgs()
-			require.Equal(t, test.socket, socketArgs.unixsocket)
-			require.Equal(t, test.result, socketArgs.result)
-			require.Equal(t, test.share, socketArgs.share)
+			require.Equal(t, test.socket, socketArgs.Unixsocket)
+			require.Equal(t, test.result, socketArgs.Result)
+			require.Equal(t, test.share, socketArgs.Share)
 		})
 	}
 }
@@ -114,7 +114,7 @@ func TestParseArgs_BareShareKey(t *testing.T) {
 	args := parseArgs("default#process=mppjpegenc#share")
 	require.True(t, args.needSocket, "bare #share must set needSocket")
 	require.Equal(t, "interpipeshare", args.Share, "expected default share name fallback")
-	require.NotEmpty(t, args.socketArgs().unixsocket, "socket mode should resolve a socket address")
+	require.NotEmpty(t, args.socketArgs().Unixsocket, "socket mode should resolve a socket address")
 }
 
 func TestParseArgs_SocketKeyTriggersSocketMode(t *testing.T) {
@@ -122,7 +122,7 @@ func TestParseArgs_SocketKeyTriggersSocketMode(t *testing.T) {
 	// when no streams? body and no #share is present.
 	args := parseArgs("default#socket")
 	sa := args.socketArgs()
-	require.NotEmpty(t, sa.unixsocket, "expected socket mode to resolve a socket address")
+	require.NotEmpty(t, sa.Unixsocket, "expected socket mode to resolve a socket address")
 }
 
 func TestParseArgs_StreamReferenceRequiresSocketMode(t *testing.T) {
@@ -134,7 +134,7 @@ func TestParseArgs_StreamReferenceRequiresSocketMode(t *testing.T) {
 	require.True(t, args.needSocket, "streams? body must set needSocket")
 	require.Equal(t, "", args.Caps, "streams? mode should clear default caps")
 	require.Equal(t, "", args.Process, "streams? mode should clear default process")
-	require.NotEmpty(t, args.socketArgs().unixsocket, "socket mode should resolve a socket address")
+	require.NotEmpty(t, args.socketArgs().Unixsocket, "socket mode should resolve a socket address")
 }
 
 func TestParseArgs_Device(t *testing.T) {
@@ -186,9 +186,9 @@ func TestParseArgs_Device(t *testing.T) {
 			require.Equal(t, test.cmd, args.String())
 
 			socketArgs := args.socketArgs()
-			require.Equal(t, test.socket, socketArgs.unixsocket)
-			require.Equal(t, test.result, socketArgs.result)
-			require.Equal(t, test.share, socketArgs.share)
+			require.Equal(t, test.socket, socketArgs.Unixsocket)
+			require.Equal(t, test.result, socketArgs.Result)
+			require.Equal(t, test.share, socketArgs.Share)
 		})
 	}
 }
@@ -270,9 +270,9 @@ func TestParseArgs_Streams(t *testing.T) {
 			require.Equal(t, test.cmd, args.String())
 
 			socketArgs := args.socketArgs()
-			require.Equal(t, test.socket, socketArgs.unixsocket)
-			require.Equal(t, test.result, socketArgs.result)
-			require.Equal(t, test.share, socketArgs.share)
+			require.Equal(t, test.socket, socketArgs.Unixsocket)
+			require.Equal(t, test.result, socketArgs.Result)
+			require.Equal(t, test.share, socketArgs.Share)
 		})
 	}
 }

@@ -3,6 +3,7 @@
 package gstreamer
 
 import (
+	"encoding/json"
 	"errors"
 	"io"
 	"net"
@@ -11,15 +12,29 @@ import (
 	"github.com/AlexxIT/go2rtc/pkg/core"
 )
 
-// Producer wraps a core.Producer (from magic.Open) and owns the lifetime
-// of the unix socket and the pipe read end the gstreamer service writes to.
+// Producer wraps a core.Producer (from magic.Open) and owns the unix socket
+// + pipe lifetime the gstreamer service writes to.
 type Producer struct {
-	wrapped  core.Producer
-	conn     *net.UnixConn
-	readPipe io.Closer
-
+	wrapped     core.Producer
+	conn        *net.UnixConn
+	readPipe    io.Closer
+	shareSocket *ShareSocket
 	mu     sync.Mutex
 	closed bool
+}
+
+// MarshalJSON delegates to the wrapped producer and nests shareSocket
+// under "pipelines".
+func (p *Producer) MarshalJSON() ([]byte, error) {
+	wrappedJSON, _ := json.Marshal(p.wrapped)
+	if p.shareSocket == nil {
+		return wrappedJSON, nil
+	}
+
+	out := make(map[string]any)
+	_ = json.Unmarshal(wrappedJSON, &out)
+	out["pipelines"] = p.shareSocket
+	return json.Marshal(out)
 }
 
 // Start is a passthrough. If the gstreamer service disappears, the pipe

@@ -5,7 +5,6 @@ package gstreamer
 import (
 	"errors"
 	"net"
-	"sync"
 
 	"github.com/AlexxIT/go2rtc/pkg/core"
 )
@@ -14,7 +13,6 @@ import (
 type Producer struct {
 	wrapped core.Producer
 	conn    *net.UnixConn
-	mu      sync.Mutex
 }
 
 func (*Producer) Start() error                { return errors.New("gstreamer: not supported on this platform") }

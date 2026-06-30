@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"net"
-	"sync"
 
 	"github.com/AlexxIT/go2rtc/pkg/core"
 )
@@ -27,8 +26,6 @@ type Producer struct {
 	conn        *net.UnixConn
 	readPipe    io.Closer
 	shareSocket *ShareSocket
-	mu     sync.Mutex
-	closed bool
 }
 
 // MarshalJSON flattens the embedded *core.Connection fields of the wrapped
@@ -52,26 +49,11 @@ func (p *Producer) MarshalJSON() ([]byte, error) {
 	return json.Marshal(info)
 }
 
-// Start is a passthrough. If the gstreamer service disappears, the pipe
-// returns EOF on the first packet read, surfacing as a Start failure.
-// The streams layer handles reconnect.
 func (p *Producer) Start() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.closed {
-		return errors.New("gstreamer: producer closed")
-	}
 	return p.wrapped.Start()
 }
 
 func (p *Producer) Stop() error {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.closed {
-		return nil
-	}
-	p.closed = true
-
 	err := p.wrapped.Stop()
 	if p.readPipe != nil {
 		_ = p.readPipe.Close()
